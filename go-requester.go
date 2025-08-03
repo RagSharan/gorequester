@@ -1,165 +1,88 @@
 package gorequester
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
-	"io"
+	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
-type RequestInput struct {
-	URL     string
-	Method  string
-	Headers map[string]string
-	Body    []byte
-	Timeout time.Duration
-	Retries int // optional retry count
+var defaultClient = resty.New()
+
+func init() {
+	defaultClient.SetTimeout(10 * time.Second)
+	defaultClient.SetHeader("User-Agent", "gorequester/1.0")
 }
 
-// Send performs the HTTP request with optional retries
-func Send(input RequestInput) ([]byte, error) {
-	if input.Method == "" {
-		input.Method = "GET"
+// NewClient allows creating a custom resty client
+func NewClient(timeout time.Duration, defaultHeaders map[string]string) *resty.Client {
+	client := resty.New()
+	client.SetTimeout(timeout)
+	for k, v := range defaultHeaders {
+		client.SetHeader(k, v)
 	}
-	if input.Timeout == 0 {
-		input.Timeout = 10 * time.Second
-	}
-	if input.Retries == 0 {
-		input.Retries = 1
-	}
-
-	var lastErr error
-	for i := 0; i < input.Retries; i++ {
-		client := &http.Client{Timeout: input.Timeout}
-		req, err := http.NewRequest(input.Method, input.URL, bytes.NewReader(input.Body))
-		if err != nil {
-			return nil, err
-		}
-
-		for k, v := range input.Headers {
-			req.Header.Set(k, v)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = err
-			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond) // exponential-ish backoff
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, errors.New("request failed with status: " + resp.Status)
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		return body, nil
-	}
-	return nil, lastErr
+	return client
 }
 
-// SendJSON simplifies sending a JSON POST/PUT
-func SendJSON(url, method string, payload interface{}, headers map[string]string) ([]byte, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
+func Get(url string, headers map[string]string) (*resty.Response, error) {
+	request := defaultClient.R()
+	for k, v := range headers {
+		request.SetHeader(k, v)
+	}
+	return request.Get(url)
+}
+
+func Post(url string, body []byte, headers map[string]string) (*resty.Response, error) {
+	request := defaultClient.R().SetBody(body)
+	for k, v := range headers {
+		request.SetHeader(k, v)
+	}
+	return request.Post(url)
+}
+
+func Put(url string, body []byte, headers map[string]string) (*resty.Response, error) {
+	request := defaultClient.R().SetBody(body)
+	for k, v := range headers {
+		request.SetHeader(k, v)
+	}
+	return request.Put(url)
+}
+
+func Patch(url string, body []byte, headers map[string]string) (*resty.Response, error) {
+	request := defaultClient.R().SetBody(body)
+	for k, v := range headers {
+		request.SetHeader(k, v)
+	}
+	return request.Patch(url)
+}
+
+func Delete(url string, headers map[string]string) (*resty.Response, error) {
+	request := defaultClient.R()
+	for k, v := range headers {
+		request.SetHeader(k, v)
+	}
+	return request.Delete(url)
+}
+
+func SendJSON(url string, method string, jsonBody interface{}, headers map[string]string) (*resty.Response, error) {
+	request := defaultClient.R().SetHeader("Content-Type", "application/json").SetBody(jsonBody)
+	for k, v := range headers {
+		request.SetHeader(k, v)
 	}
 
-	if headers == nil {
-		headers = make(map[string]string)
+	switch method {
+	case http.MethodPost:
+		return request.Post(url)
+	case http.MethodPut:
+		return request.Put(url)
+	case http.MethodPatch:
+		return request.Patch(url)
+	case http.MethodDelete:
+		return request.Delete(url)
+	case http.MethodGet:
+		return request.Get(url)
+	default:
+		return nil, fmt.Errorf("unsupported method: %s", method)
 	}
-	headers["Content-Type"] = "application/json"
-
-	return Send(RequestInput{
-		URL:     url,
-		Method:  method,
-		Headers: headers,
-		Body:    body,
-		Retries: 2,
-	})
-}
-
-// ParseJSON is a utility to decode JSON response to a struct
-func ParseJSON(data []byte, target interface{}) error {
-	return json.Unmarshal(data, target)
-}
-
-// Convenience method for GET
-func GetData(url string, headers map[string]string) ([]byte, error) {
-	return Send(RequestInput{
-		URL:     url,
-		Method:  "GET",
-		Headers: headers,
-		Retries: 1,
-	})
-}
-
-// Convenience method for POST
-func PostData(url string, body []byte, headers map[string]string) ([]byte, error) {
-	if headers == nil {
-		headers = make(map[string]string)
-	}
-	headers["Content-Type"] = "application/json"
-	return Send(RequestInput{
-		URL:     url,
-		Method:  "POST",
-		Headers: headers,
-		Body:    body,
-		Retries: 1,
-	})
-}
-
-// Convenience method for PUT
-func PutData(url string, body []byte, headers map[string]string) ([]byte, error) {
-	if headers == nil {
-		headers = make(map[string]string)
-	}
-	headers["Content-Type"] = "application/json"
-	return Send(RequestInput{
-		URL:     url,
-		Method:  "PUT",
-		Headers: headers,
-		Body:    body,
-		Retries: 1,
-	})
-}
-
-// Convenience method for DELETE
-func DeleteData(url string, headers map[string]string) ([]byte, error) {
-	return Send(RequestInput{
-		URL:     url,
-		Method:  "DELETE",
-		Headers: headers,
-		Retries: 1,
-	})
-}
-
-// Convenience method for PATCH
-func PatchData(url string, body []byte, headers map[string]string) ([]byte, error) {
-	if headers == nil {
-		headers = make(map[string]string)
-	}
-	headers["Content-Type"] = "application/json"
-	return Send(RequestInput{
-		URL:     url,
-		Method:  "PATCH",
-		Headers: headers,
-		Body:    body,
-		Retries: 1,
-	})
-}
-
-// Convenience method for OPTIONS
-func Options(url string, headers map[string]string) ([]byte, error) {
-	return Send(RequestInput{
-		URL:     url,
-		Method:  "OPTIONS",
-		Headers: headers,
-		Retries: 1,
-	})
 }
