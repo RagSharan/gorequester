@@ -88,3 +88,78 @@ func SendJSON(url, method string, payload interface{}, headers map[string]string
 func ParseJSON(data []byte, target interface{}) error {
 	return json.Unmarshal(data, target)
 }
+
+// Convenience method for GET
+func GetData(url string, headers map[string]string) ([]byte, error) {
+	return Send(RequestInput{
+		URL:     url,
+		Method:  "GET",
+		Headers: headers,
+		Retries: 1,
+	})
+}
+
+// Convenience method for POST
+func PostData(url string, body []byte, headers map[string]string) ([]byte, error) {
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+	headers["Content-Type"] = "application/json"
+	return Send(RequestInput{
+		URL:     url,
+		Method:  "POST",
+		Headers: headers,
+		Body:    body,
+		Retries: 1,
+	})
+}
+
+// Convenience method for PUT
+func PutData(url string, body []byte, headers map[string]string) ([]byte, error) {
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+	headers["Content-Type"] = "application/json"
+	return Send(RequestInput{
+		URL:     url,
+		Method:  "PUT",
+		Headers: headers,
+		Body:    body,
+		Retries: 1,
+	})
+}
+
+// Convenience method for DELETE
+func DeleteData(url string, headers map[string]string) ([]byte, error) {
+	return Send(RequestInput{
+		URL:     url,
+		Method:  "DELETE",
+		Headers: headers,
+		Retries: 1,
+	})
+}
+
+// Convenience method for PATCH
+func PatchData(url string, body []byte, headers map[string]string) ([]byte, error) {
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+	headers["Content-Type"] = "application/json"
+	return Send(RequestInput{
+		URL:     url,
+		Method:  "PATCH",
+		Headers: headers,
+		Body:    body,
+		Retries: 1,
+	})
+}
+
+// Convenience method for OPTIONS
+func Options(url string, headers map[string]string) ([]byte, error) {
+	return Send(RequestInput{
+		URL:     url,
+		Method:  "OPTIONS",
+		Headers: headers,
+		Retries: 1,
+	})
+}
